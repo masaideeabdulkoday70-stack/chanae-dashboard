@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <title>Dashboard ศพด.จะแนะ</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root { --main: #4361ee; --bg: #f8faff; }
+    body { font-family: 'Sarabun', sans-serif; background: var(--bg); display: flex; margin: 0; min-height: 100vh; }
+    .sidebar { width: 260px; background: #fff; border-right: 1px solid #eee; position: fixed; height: 100vh; }
+    .nav-link { color: #666; padding: 12px 20px; cursor: pointer; border-radius: 10px; margin: 5px 15px; border: none; display: block; text-decoration: none; }
+    .nav-link.active { background: #eff6ff; color: var(--main) !important; font-weight: 600; }
+    .main-content { margin-left: 260px; width: calc(100% - 260px); padding: 30px; }
+    .card-ui { background: #fff; border-radius: 20px; padding: 25px; border: 1px solid #f0f0f0; box-shadow: 0 4px 20px rgba(0,0,0,0.03); margin-bottom: 20px; }
+    .nav-pills .nav-link { border: 1px solid #ddd; margin-right: 8px; color: #555; background: #fff; border-radius: 25px; }
+    .nav-pills .nav-link.active { background: var(--main) !important; color: #fff !important; border-color: var(--main); }
+    .loading-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; }
+    .total-row { background: #1a1c2e !important; color: white !important; font-weight: 600; }
+  </style>
+</head>
+<body>
+
+  <div id="loading" class="loading-screen">
+    <div class="spinner-border text-primary mb-3"></div>
+    <div class="text-muted">กำลังดึงข้อมูลจากระบบ Google Sheets...</div>
+  </div>
+
+  <div class="sidebar">
+    <div class="p-4 text-center border-bottom mb-3">
+        <h6 class="fw-bold text-primary mb-0">ศพด.จะแนะ</h6>
+        <small class="text-muted">GitHub Hosting</small>
+    </div>
+    <div class="nav flex-column">
+      <div class="nav-link active" onclick="switchPage('home', this)"><i class="fas fa-chart-pie me-2"></i>ภาพรวมระบบ</div>
+      <div class="nav-link" onclick="switchPage('report', this)"><i class="fas fa-users me-2"></i>สรุป 25 ท่าน</div>
+      <div class="nav-link" onclick="switchPage('leave', this)"><i class="fas fa-history me-2"></i>ประวัติการลา</div>
+    </div>
+  </div>
+
+  <div class="main-content">
+    <h4 class="fw-bold mb-4" id="pageTitle">ภาพรวมระบบ</h4>
+
+    <div id="page-home" class="page-content">
+        <div class="row g-4 mb-4" id="stat-cards"></div>
+        <div class="row g-4">
+          <div class="col-md-6"><div class="card-ui h-100"><canvas id="leaveChart"></canvas></div></div>
+          <div class="col-md-6"><div class="card-ui h-100"><h6 class="fw-bold mb-3">แจ้งลาล่าสุด</h6><div id="recent-list" class="small"></div></div></div>
+        </div>
+    </div>
+
+    <div id="page-report" class="page-content d-none">
+      <div class="card-ui">
+        <div class="nav nav-pills mb-4" id="posTabs">
+          <button class="nav-link active" onclick="renderReport('ทั้งหมด', this)">ทั้งหมด</button>
+          <button class="nav-link" onclick="renderReport('ครูข้าราชการ', this)">ครูข้าราชการ</button>
+          <button class="nav-link" onclick="renderReport('ผู้ดูแลเด็ก', this)">ผู้ดูแลเด็ก</button>
+          <button class="nav-link" onclick="renderReport('พี่เลี้ยง', this)">พี่เลี้ยง</button>
+        </div>
+        <div class="table-responsive">
+          <table class="table text-center align-middle">
+            <thead><tr class="small"><th class="text-start ps-4">ชื่อ-นามสกุล</th><th>กิจ</th><th>ป่วย</th><th>พักผ่อน</th><th>สาย</th></tr></thead>
+            <tbody id="reportTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="page-leave" class="page-content d-none">
+      <div class="card-ui p-0 overflow-hidden">
+        <table class="table mb-0"><tbody id="leaveBody"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = 'https://script.google.com/macros/s/AKfycbwQaVVHPrlZdrAm29RYEbYPLREBFH3b9tXEZmM7qrURR_nICAUCS2JxpdeO3ZjB9LCz/exec'; // *** แก้ไขตรงนี้ ***
+    let db = { staff: [], leaves: [] };
+    let chart = null;
+
+    window.onload = () => {
+      fetch(API_URL)
+        .then(response => response.json())
+        .then(data => {
+          db = data;
+          initDashboard();
+          document.getElementById('loading').style.display = 'none';
+        })
+        .catch(err => {
+          alert('ไม่สามารถดึงข้อมูลได้ โปรดตรวจสอบการ Deploy Web App');
+          console.error(err);
+        });
+    };
+
+    function initDashboard() {
+      let stats = { k:0, p:0, kl:0, pk:0, s:0 };
+      db.leaves.forEach(l => {
+        if(l.type.includes('กิจ')) stats.k += l.days;
+        else if(l.type.includes('ป่วย')) stats.p += l.days;
+        else if(l.type.includes('พักผ่อน')) stats.pk += l.days;
+        else if(l.type.includes('สาย')) stats.s += 1;
+      });
+      document.getElementById('stat-cards').innerHTML = `
+        <div class="col-md-3"><div class="card-ui"><h6>${db.staff.length}</h6><small>บุคลากร</small></div></div>
+        <div class="col-md-3"><div class="card-ui text-primary"><h6>${stats.k}</h6><small>ลากิจ</small></div></div>
+        <div class="col-md-3"><div class="card-ui text-danger"><h6>${stats.p}</h6><small>ลาป่วย</small></div></div>
+        <div class="col-md-3"><div class="card-ui text-info"><h6>${stats.s}</h6><small>มาสาย</small></div></div>
+      `;
+      const ctx = document.getElementById('leaveChart');
+      chart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: ['กิจ', 'ป่วย', 'พักผ่อน', 'สาย'],
+          datasets: [{ data: [stats.k, stats.p, stats.pk, stats.s], backgroundColor: ['#4361ee', '#ef4444', '#f59e0b', '#3b82f6'], borderWeight: 0 }]
+        }
+      });
+      document.getElementById('recent-list').innerHTML = db.leaves.slice(0, 5).map(l => `<div class="p-2 border-bottom"><b>${l.name}</b> - ${l.type}</div>`).join('');
+    }
+
+    function switchPage(p, el) {
+      document.querySelectorAll('.page-content').forEach(x => x.classList.add('d-none'));
+      document.querySelectorAll('.nav-link').forEach(x => x.classList.remove('active'));
+      el.classList.add('active');
+      document.getElementById('page-' + p).classList.remove('d-none');
+      document.getElementById('pageTitle').innerText = el.innerText.trim();
+      if(p === 'report') renderReport('ทั้งหมด');
+      if(p === 'leave') renderLeave();
+    }
+
+    function renderReport(filter, el) {
+      if(el) {
+        document.querySelectorAll('#posTabs .nav-link').forEach(b => b.classList.remove('active'));
+        el.classList.add('active');
+      }
+      let summary = {};
+      db.staff.forEach(s => summary[s.name] = { pos: s.pos, k:0, p:0, pk:0, s:0 });
+      db.leaves.forEach(l => {
+        if(summary[l.name]) {
+          if(l.type.includes('กิจ')) summary[l.name].k += l.days;
+          else if(l.type.includes('ป่วย')) summary[l.name].p += l.days;
+          else if(l.type.includes('พักผ่อน')) summary[l.name].pk += l.days;
+          else if(l.type.includes('สาย')) summary[l.name].s += 1;
+        }
+      });
+      let h = "", t = { k:0, p:0, pk:0, s:0 };
+      Object.keys(summary).sort().forEach(name => {
+        let item = summary[name];
+        if(filter === 'ทั้งหมด' || item.pos.includes(filter)) {
+          t.k += item.k; t.p += item.p; t.pk += item.pk; t.s += item.s;
+          h += `<tr><td class="text-start ps-4 fw-bold">${name}</td><td>${item.k}</td><td>${item.p}</td><td>${item.pk}</td><td>${item.s}</td></tr>`;
+        }
+      });
+      h += `<tr class="total-row"><td>รวม (${filter})</td><td>${t.k}</td><td>${t.p}</td><td>${t.pk}</td><td>${t.s}</td></tr>`;
+      document.getElementById('reportTableBody').innerHTML = h;
+    }
+
+    function renderLeave() {
+      document.getElementById('leaveBody').innerHTML = db.leaves.map(l => `<tr><td class="ps-4"><b>${l.name}</b><br><small>${l.type}</small></td><td>${l.date}<br><small>${l.days} วัน</small></td><td class="small text-muted">${l.reason}</td></tr>`).join('');
+    }
+  </script>
+</body>
+</html>
